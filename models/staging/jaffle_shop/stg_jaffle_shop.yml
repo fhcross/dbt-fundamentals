@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: Staged Customer data from our jaffle shop app.
+    columns: 
+      - name: customer_id
+        description: Unique customer id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_orders
+    description: contains all order placed with the jaffle shop.
+    columns: 
+      - name: order_id
+        description: unique order id
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: "{{ doc ('order_status')}}"
+        tests:
+          - accepted_values:
+              values:
+                - completed
+                - shipped
+                - returned
+                - placed
+                - return_pending
+      - name: customer_id
+        tests:
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id           
