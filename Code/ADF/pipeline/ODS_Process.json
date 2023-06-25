@@ -1,0 +1,262 @@
+{
+	"name": "ODS_Process",
+	"properties": {
+		"activities": [
+			{
+				"name": "Delta_Tables",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderStoredProcedureName": "[ETL].[ADF_SourceQuery]",
+						"storedProcedureParameters": {
+							"ActionName": {
+								"type": "String",
+								"value": {
+									"value": "@pipeline().parameters.ActionName",
+									"type": "Expression"
+								}
+							},
+							"DeltaLoad": {
+								"type": "String",
+								"value": {
+									"value": "@pipeline().parameters.DeltaLoad",
+									"type": "Expression"
+								}
+							},
+							"SourceType": {
+								"type": "String",
+								"value": {
+									"value": "@pipeline().parameters.SourceType",
+									"type": "Expression"
+								}
+							},
+							"TriggerName": {
+								"type": "String",
+								"value": {
+									"value": "@pipeline().parameters.TriggerName",
+									"type": "Expression"
+								}
+							}
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_ASQL_aedevdapsqldb01_etl",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Iterate_ODS_Objects",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Delta_Tables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Delta_Tables').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "Get_BatchID",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "StartBatch",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "BatchID",
+								"value": {
+									"value": "@{int(activity('StartBatch').output.firstRow.BatchID)}\n\n\n\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "StartBatch",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[ETL].[CreateBatch]",
+									"storedProcedureParameters": {
+										"BatchID": {
+											"type": "Int32",
+											"value": null
+										},
+										"ProcessName": {
+											"type": "String",
+											"value": {
+												"value": "@pipeline().parameters.ProcessName",
+												"type": "Expression"
+											}
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "DS_ASQL_aedevdapsqldb01_etl",
+									"type": "DatasetReference"
+								}
+							}
+						},
+						{
+							"name": "ODS_Procedure",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Get_BatchID",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": {
+									"value": "@item().ODSProcedureName",
+									"type": "Expression"
+								},
+								"storedProcedureParameters": {
+									"idw_batchid": {
+										"value": {
+											"value": "@int(variables('BatchID'))",
+											"type": "Expression"
+										},
+										"type": "Int32"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "AzureSql_DAPDB",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DomainName": "aedevdapsql01.database.windows.net",
+									"DatabaseName": "aedevdapsqldb01"
+								}
+							}
+						},
+						{
+							"name": "CloseBatch",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ODS_Procedure",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[ETL].[CloseBatch]",
+								"storedProcedureParameters": {
+									"BatchID": {
+										"value": {
+											"value": "@int(variables('BatchID'))",
+											"type": "Expression"
+										},
+										"type": "Int32"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "Azuresql_ETLDB",
+								"type": "LinkedServiceReference"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"ProcessName": {
+				"type": "string",
+				"defaultValue": "DataTrigger"
+			},
+			"Batch": {
+				"type": "int",
+				"defaultValue": 0
+			},
+			"TriggerName": {
+				"type": "string",
+				"defaultValue": "DataTrigger"
+			},
+			"ActionName": {
+				"type": "string",
+				"defaultValue": "Stage"
+			},
+			"SourceType": {
+				"type": "string",
+				"defaultValue": "SQL"
+			},
+			"DeltaLoad": {
+				"type": "string",
+				"defaultValue": "Delta"
+			}
+		},
+		"variables": {
+			"BatchID": {
+				"type": "String"
+			},
+			"TargetTableName": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "IngestStage"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:32:50Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

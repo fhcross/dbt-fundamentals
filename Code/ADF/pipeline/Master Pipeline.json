@@ -1,0 +1,46 @@
+{
+	"name": "Master Pipeline",
+	"properties": {
+		"activities": [
+			{
+				"name": "StageData_Preparation",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "SP_Test",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "ODSData_Preparation",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StageData_Preparation",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "ODS_Process",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"folder": {
+			"name": "IngestStage"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:33:08Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

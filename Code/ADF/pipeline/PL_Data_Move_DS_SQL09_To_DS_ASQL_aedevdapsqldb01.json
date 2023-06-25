@@ -1,0 +1,432 @@
+{
+	"name": "PL_Data_Move_DS_SQL09_To_DS_ASQL_aedevdapsqldb01",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get Required objects from Configuration",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select *\nfrom etl.configuration\nwhere actionname = 'Stage'\nand isActive = 1",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_ASQL_aedevdapsqldb01_etl",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Iterate tables to ingest into Azure from 09Server",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get Required objects from Configuration",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get Required objects from Configuration').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "IsDataLoadType_Delta",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().DataLoadType,'DELTA')",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Full Data copy",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "\nEXEC ('@{item().ExecutedQuery}')",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "AzureSqlSink",
+												"preCopyScript": {
+													"value": "@{item().PreQuery}",
+													"type": "Expression"
+												},
+												"writeBehavior": "insert",
+												"sqlWriterUseTableLock": false,
+												"tableOption": "autoCreate",
+												"disableMetricsCollection": false
+											},
+											"enableStaging": true,
+											"stagingSettings": {
+												"linkedServiceName": {
+													"referenceName": "aedevsynapse01-ws-WorkspaceDefaultStorage",
+													"type": "LinkedServiceReference"
+												},
+												"path": "clarestaging"
+											},
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_FMA_MSCRM",
+												"type": "DatasetReference",
+												"parameters": {
+													"sr_dbserver": {
+														"value": "@item().SourceServerName",
+														"type": "Expression"
+													},
+													"sr_dbname": {
+														"value": "@item().SourceDatabaseName",
+														"type": "Expression"
+													},
+													"sr_schema": {
+														"value": "@item().SourceSchemaName",
+														"type": "Expression"
+													},
+													"sr_table": {
+														"value": "@item().SourceTableName",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ASQL_aedevdapsqldb01",
+												"type": "DatasetReference",
+												"parameters": {
+													"tg_ServerName": {
+														"value": "@item().TargetServername",
+														"type": "Expression"
+													},
+													"tg_Database": {
+														"value": "@item().TargetDatabaseName",
+														"type": "Expression"
+													},
+													"tg_Schema": {
+														"value": "@item().TargetSchemaName",
+														"type": "Expression"
+													},
+													"tg_Table": {
+														"value": "@item().TargetTableName",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Delta Copy",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "DECLARE @query nvarchar(max)\nset @query = ('@{item().ExecutedQuery}') + ''''+('@{item().WatermarkValue}')+''''\nEXEC (@query)\n ",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "AzureSqlSink",
+												"preCopyScript": {
+													"value": "@{item().PreQuery}",
+													"type": "Expression"
+												},
+												"writeBehavior": "insert",
+												"sqlWriterUseTableLock": false,
+												"tableOption": "autoCreate",
+												"disableMetricsCollection": false
+											},
+											"enableStaging": true,
+											"stagingSettings": {
+												"linkedServiceName": {
+													"referenceName": "aedevsynapse01-ws-WorkspaceDefaultStorage",
+													"type": "LinkedServiceReference"
+												},
+												"path": "clarestaging"
+											},
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_FMA_MSCRM",
+												"type": "DatasetReference",
+												"parameters": {
+													"sr_dbserver": {
+														"value": "@item().SourceServerName",
+														"type": "Expression"
+													},
+													"sr_dbname": {
+														"value": "@item().SourceDatabaseName",
+														"type": "Expression"
+													},
+													"sr_schema": {
+														"value": "@item().SourceSchemaName",
+														"type": "Expression"
+													},
+													"sr_table": {
+														"value": "@item().SourceTableName",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ASQL_aedevdapsqldb01",
+												"type": "DatasetReference",
+												"parameters": {
+													"tg_ServerName": {
+														"value": "@item().TargetServername",
+														"type": "Expression"
+													},
+													"tg_Database": {
+														"value": "@item().TargetDatabaseName",
+														"type": "Expression"
+													},
+													"tg_Schema": {
+														"value": "@item().TargetSchemaName",
+														"type": "Expression"
+													},
+													"tg_Table": {
+														"value": "@item().TargetTableName",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get Watermark value from Delta tables",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Iterate tables to ingest into Azure from 09Server",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select *\nfrom etl.configuration\nwhere actionname = 'Stage'\nand isActive = 1 \nand dataloadType = 'DELTA'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_ASQL_aedevdapsqldb01_etl",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Iterate Delta tables",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get Watermark value from Delta tables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get Watermark value from Delta tables').output.value\n",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Update Value",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Delta_WatermarkValue",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[ETL].[sp_UpdateConfiguration]",
+								"storedProcedureParameters": {
+									"processID": {
+										"value": {
+											"value": "@item().ProcessID",
+											"type": "Expression"
+										},
+										"type": "Int32"
+									},
+									"watermarkvalue": {
+										"value": {
+											"value": "@activity('Delta_WatermarkValue').output.value[0].watermarkValue",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "Azuresql_ETLDB",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"name": "Delta_WatermarkValue",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "exec ('@{item().WaterMarkQuery}')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "DS_ASQL_aedevdapsqldb01",
+									"type": "DatasetReference",
+									"parameters": {
+										"tg_ServerName": {
+											"value": "@item().TargetServername",
+											"type": "Expression"
+										},
+										"tg_Database": {
+											"value": "@item().TargetDatabaseName",
+											"type": "Expression"
+										},
+										"tg_Schema": {
+											"value": "@item().TargetSchemaName",
+											"type": "Expression"
+										},
+										"tg_Table": {
+											"value": "@item().TargetTableName",
+											"type": "Expression"
+										}
+									}
+								},
+								"firstRowOnly": false
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"TriggerName": {
+				"type": "String"
+			},
+			"ActionName": {
+				"type": "String"
+			},
+			"SourceType": {
+				"type": "String"
+			},
+			"LatestModified": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "IngestStage"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:34:30Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,98 @@
+{
+	"name": "FMA-IDW-ODS",
+	"properties": {
+		"activities": [
+			{
+				"name": "GetProcedureList",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select [name] from sys.procedures\n\nwhere [name] like 'proc_ODS%' ",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "GetStagingProcedureNames",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "GetProcedureList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('GetProcedureList').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "ExecuteStagingProcs",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "AzureSql_DAPDB",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DomainName": "aetestdapsql01.database.windows.net",
+									"DatabaseName": "aetestdapsqldb01"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "Query",
+										"text": {
+											"value": "@concat('exec clare.',item().name,' @idw_batchid = ',pipeline().parameters.BatchId)",
+											"type": "Expression"
+										}
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"BatchId": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "FMAIDWStaging"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:32:39Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,255 @@
+{
+	"name": "FMA-IDW-Dimensions",
+	"properties": {
+		"activities": [
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(1,1)",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "GetHighwaterForDimLicence",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[etl].[proc_GetHighwater]",
+									"storedProcedureParameters": {
+										"HighwaterColumnName": {
+											"type": "String",
+											"value": "idw_version_start_date"
+										},
+										"TableName": {
+											"type": "String",
+											"value": "dim_licence"
+										},
+										"TableSchema": {
+											"type": "String",
+											"value": "mart"
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "GetHighwater",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "GetHighwaterForDimLicenceApplication",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[etl].[proc_GetHighwater]",
+									"storedProcedureParameters": {
+										"HighwaterColumnName": {
+											"type": "String",
+											"value": "idw_version_start_date"
+										},
+										"TableName": {
+											"type": "String",
+											"value": "dim_licence_application"
+										},
+										"TableSchema": {
+											"type": "String",
+											"value": "mart"
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "GetHighwater",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "ExecuteDimLicenceApplication",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "GetHighwaterForDimLicenceApplication",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[clare].[proc_Mart_Dim_Licence_Application]",
+									"storedProcedureParameters": {
+										"idw_batchid": {
+											"type": "Int32",
+											"value": {
+												"value": "@pipeline().parameters.BatchId",
+												"type": "Expression"
+											}
+										},
+										"last_record_change": {
+											"type": "DateTime",
+											"value": {
+												"value": "@activity('GetHighwaterForDimLicenceApplication').output.firstRow.LastRecordChange",
+												"type": "Expression"
+											}
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "ExecuteMartProcs",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "ExecuteDimLicence",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "GetHighwaterForDimLicence",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[clare].[proc_Mart_Dim_Licence]",
+									"storedProcedureParameters": {
+										"idw_batchid": {
+											"type": "Int32",
+											"value": {
+												"value": "@pipeline().parameters.BatchId",
+												"type": "Expression"
+											}
+										},
+										"last_record_change": {
+											"type": "DateTime",
+											"value": {
+												"value": "@activity('GetHighwaterForDimLicence').output.firstRow.LastRecordChange",
+												"type": "Expression"
+											}
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "ExecuteMartProcs",
+									"type": "DatasetReference"
+								}
+							}
+						},
+						{
+							"name": "ExecuteDimDate",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderStoredProcedureName": "[core].[Proc_Mart_Dim_Date]",
+									"storedProcedureParameters": {
+										"calendar_end_date": {
+											"type": "DateTime",
+											"value": {
+												"value": "@addToTime(concat(substring(convertFromUtc(utcNow(),'New Zealand Standard Time'),0,4),'-12','-31'),1,'Year')",
+												"type": "Expression"
+											}
+										},
+										"calendar_start_date": {
+											"type": "DateTime",
+											"value": "1900-01-01"
+										},
+										"datefirst": {
+											"type": "Int32",
+											"value": "1"
+										},
+										"fiscal_start_month": {
+											"type": "Int32",
+											"value": "7"
+										}
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "ExecuteMartProcs",
+									"type": "DatasetReference"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"BatchId": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "FMAIDWMart"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:32:31Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

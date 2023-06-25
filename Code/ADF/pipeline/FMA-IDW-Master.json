@@ -1,0 +1,217 @@
+{
+	"name": "FMA-IDW-Master",
+	"properties": {
+		"activities": [
+			{
+				"name": "CreateBatch",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderStoredProcedureName": "[ETL].[CreateBatch]",
+						"storedProcedureParameters": {
+							"ProcessName ": {
+								"value": "IDW Daily Load"
+							},
+							"BatchID": {
+								"value": {
+									"value": "@variables('batch_id')",
+									"type": "Expression"
+								}
+							}
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "CreateBatch",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "Landing",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "SetBatchId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "FMAMetadataDrivenCopyTask_iik_TopLevel",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"TriggerName": {
+							"value": "@pipeline().TriggerName",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "ODS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Landing",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "FMA-IDW-ODS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"BatchId": {
+							"value": "@variables('batch_id')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimensions",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ODS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "FMA-IDW-Dimensions",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"BatchId": {
+							"value": "@variables('batch_id')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "CloseBatch",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Facts",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderStoredProcedureName": "[ETL].[CloseBatch]",
+						"storedProcedureParameters": {
+							"BatchID": {
+								"type": "Int32",
+								"value": {
+									"value": "@variables('batch_id')",
+									"type": "Expression"
+								}
+							}
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "CreateBatch",
+						"type": "DatasetReference"
+					}
+				}
+			},
+			{
+				"name": "SetBatchId",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CreateBatch",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "batch_id",
+					"value": {
+						"value": "@{string(activity('CreateBatch').output.firstRow.BatchID)}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Facts",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimensions",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "FMA-IDW-Facts",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"BatchId": {
+							"value": "@variables('batch_id')",
+							"type": "Expression"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"batch_id": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-14T03:33:19Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}
