@@ -1,0 +1,373 @@
+/****** Object:  StoredProcedure [dbo].[proc_idw_merge_SD1]    Script Date: 7/21/2023 3:57:41 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+ALTER  PROCEDURE [dbo].[proc_idw_merge_SD1] @ProcedureName varchar(200)
+
+AS
+
+/*
+
+exec [proc_idw_merge_SD1] dim_licence_2
+
+*/
+
+--Declare @ProcedureName varchar(200)
+
+--Set @ProcedureName = 'dim_licence_2'
+
+Drop table if exists #Create_Dimension
+
+Select *
+Into #Create_Dimension
+FROM idw_AM_MergeStatement
+Where ProcedureName  = @ProcedureName
+
+
+Select * from #Create_Dimension
+
+select * from idw_AM_MergeStatement
+
+
+DECLARE @SourceTable varchar(1000)
+DECLARE @TargetTable varchar(1000)
+DECLARE @sourceColumns varchar(max)
+DECLARE @targetColumns varchar(max)
+DECLARE @hashColumn varchar(max)
+DECLARE @hashSyntax varchar(max)
+DECLARE @T varchar(50)
+DECLARE @S varchar(50)
+DECLARE @pk_Source varchar(200)
+DECLARE @pk_Target varchar(200)
+DECLARE @PK_Join varchar(1000)
+DECLARE @sourceDefault varchar(max)
+DECLARE @targetDefault varchar(max)
+
+Set @T = 'Target'
+Set @S = 'Source'
+SET @pk_Source = (Select  Column_Name from #Create_Dimension Where Source = 'Source' and primaryKey = '1')
+SET @pk_Target = (Select  Column_Name from #Create_Dimension Where Source = 'Target' and primaryKey = '1')
+
+Set @SourceTable = (Select distinct TableName from #Create_Dimension where Source = 'Source')
+Set @TargetTable = (Select distinct TableName from #Create_Dimension where Source = 'Target')
+
+SET @sourceColumns  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source'
+						and OrderNumber < 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+SET @sourceColumns = Substring(@sourceColumns,2,1000000)
+
+--Select @sourceColumns
+
+SET @sourceDefault = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source'
+						and OrderNumber >= 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @sourceDefault = Substring(@sourceDefault,2,10000)
+
+--Select @sourceDefault
+
+
+SET @targetDefault = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Target'
+						and OrderNumber >= 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @targetDefault = Substring(@targetDefault,2,10000)
+
+--Select @targetDefault
+
+SET @targetColumns  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Target'
+						and OrderNumber <1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @targetColumns = Substring(@targetColumns,2,100000)
+
+
+SET @hashColumn  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source' and HashValue = '1'
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+SET @hashColumn = Substring(@hashColumn,2,1000000)
+
+SET @hashSyntax = ',convert(varbinary(32),hashbytes(''SHA2_256'', ( select ' + @hashColumn +' for xml raw , BINARY BASE64 ))) as row_hash_type2'
+
+
+SET @PK_Join = (	Select ',' + 'Source.'+source.Column_Name + ' = Target.'+target.Column_Name
+					FROM #Create_Dimension Source 
+						Inner join
+							( Select OrderNumber,Column_name from #Create_Dimension Where  Source = 'Target' and PrimaryKey = '1' ) Target
+								on source.OrderNumber = target.Ordernumber
+					Where	Source.PrimaryKey = '1'
+						and source.Source = 'Source'
+					Order by Source.OrderNumber
+					FOR XML PATH (''))
+
+SET @PK_Join = Substring(@PK_Join,2,10000)
+
+
+Declare @UpdateColumns varchar(max)
+
+SET @UpdateColumns = (	Select ', target.' +target.Column_Name + ' = Source.'+source.Column_Name
+					FROM #Create_Dimension Source 
+						Inner join
+							( Select OrderNumber,Column_name from #Create_Dimension Where  Source = 'Target' and ToBeUpdate = '1') Target
+								on source.OrderNumber = target.Ordernumber
+					Where	Source.ToBeUpdate = '1'
+						and source.Source = 'Source'
+					Order by Source.OrderNumber
+					FOR XML PATH (''))
+
+SET @UpdateColumns = (Substring(@UpdateColumns,2,10000))
+
+Select @UpdateColumns
+
+
+--Select 0, 'Select ' + @sourceColumns   union
+--Select 1,  @hashSyntax	 				union
+--Select 1 , 'Into #temp1'    union
+--Select 2 , 'FROM ' + @SourceTable 'Source'
+
+
+
+Select 6  , 'MERGE ' +@TargetTable + ' as ' + @T 												UNION
+																					
+Select 7  , 'USING ' + @SourceTable + ' as ' +@S 												UNION
+Select 8  , ' ON ('+ @PK_Join +' and ' + @t+'.idw_current = 1)'   								UNION
+Select 9  , '----Update existing records'														UNION
+Select 10 , 'WHEN MATCHED AND TARGET.row_hash_type2 <> SOURCE.[row_hash_type2]'					UNION
+Select 11 , 'THEN'																				UNION
+Select 12 , 'UPDATE'																			UNION
+Select 13 , 'SET '																				UNION
+
+Select 14 , @UpdateColumns																		UNION
+Select 15 , '  , target.idw_update_batchid = Source.idw_batchid  '								UNION
+Select 16 , ', TARGET.row_hash_type2 = SOURCE.[row_hash_type2]'									UNION
+
+																							
+Select 19 ,  '--------Insert new records'														UNION
+Select 20 ,  ' WHEN NOT MATCHED BY TARGET'														UNION
+Select 21 , ' THEN ' 																			UNION
+Select 22 , '  INSERT ('																		UNION
+Select 23 , @targetColumns + ',' +@targetDefault												UNION
+Select 24 , ')'																					UNION
+Select 25 , 'VALUES ('																			UNION
+Select 26 , @sourceColumns	+ ',' +@sourceDefault												UNION
+Select 27 , ')'																					UNION
+
+
+Select 28 , ' -------------------'																UNION
+Select 29 , ' WHEN NOT MATCHED BY SOURCE '														UNION
+SELECT 30 , 'THEN'																				UNION
+Select 32 ,  'UPDATE  SET TARGET.idw_isDelete = 1; '
+
+
+/****** Object:  StoredProcedure [dbo].[proc_idw_merge]    Script Date: 7/21/2023 4:02:18 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+ALTER procedure [dbo].[proc_idw_merge] @ProcedureName varchar(200)
+
+as
+
+/*
+
+exec [proc_idw_merge] dim_entity
+
+*/
+
+--Declare @ProcedureName varchar(200)
+
+--Set @ProcedureName = 'dim_fund'
+
+Drop table if exists #Create_Dimension
+
+Select *
+Into #Create_Dimension
+FROM idw_AM_MergeStatement
+Where ProcedureName  = @ProcedureName
+
+
+
+
+
+Declare @SourceTable varchar(1000)
+Declare @TargetTable varchar(1000)
+DECLARE @sourceColumns varchar(max)
+DECLARE @targetColumns varchar(max)
+DECLARE @hashColumn varchar(max)
+DECLARE @hashSyntax varchar(max)
+DECLARE @T varchar(50)
+DECLARE @S varchar(50)
+DECLARE @pk_Source varchar(200)
+DECLARE @pk_Target varchar(200)
+DECLARE @PK_Join varchar(1000)
+DECLARE @sourceDefault varchar(max)
+DECLARE @targetDefault varchar(max)
+
+Set @T = 'Target'
+Set @S = 'Source'
+SET @pk_Source = (Select  Column_Name from #Create_Dimension Where Source = 'Source' and primaryKey = '1')
+SET @pk_Target = (Select  Column_Name from #Create_Dimension Where Source = 'Target' and primaryKey = '1')
+
+Set @SourceTable = (Select distinct TableName from #Create_Dimension where Source = 'Source')
+Set @TargetTable = (Select distinct TableName from #Create_Dimension where Source = 'Target')
+
+SET @sourceColumns  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source'
+						and OrderNumber < 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+SET @sourceColumns = Substring(@sourceColumns,2,1000000)
+
+--Select @sourceColumns
+
+SET @sourceDefault = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source'
+						and OrderNumber >= 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @sourceDefault = Substring(@sourceDefault,2,10000)
+
+--Select @sourceDefault
+
+
+SET @targetDefault = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Target'
+						and OrderNumber >= 1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @targetDefault = Substring(@targetDefault,2,10000)
+
+--Select @targetDefault
+
+SET @targetColumns  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Target'
+						and OrderNumber <1000
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+
+SET @targetColumns = Substring(@targetColumns,2,100000)
+
+
+SET @hashColumn  = (
+						--Select  ',' +@i_tableName +'.' + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						Select  ','  + cast(column_name as varchar(1000)) --,cast(answer_numeric_value as varchar(30))
+						from #Create_Dimension x
+						Where Source = 'Source' and HashValue = '1'
+						order by cast(OrderNumber as int)
+						for XMl PATH (''))
+SET @hashColumn = Substring(@hashColumn,2,1000000)
+
+SET @hashSyntax = ',convert(varbinary(32),hashbytes(''SHA2_256'', ( select ' + @hashColumn +' for xml raw , BINARY BASE64 ))) as row_hash_type2'
+
+
+SET @PK_Join = (	Select ',' + 'Source.'+source.Column_Name + ' = Target.'+target.Column_Name
+					FROM #Create_Dimension Source 
+						Inner join
+							( Select OrderNumber,Column_name from #Create_Dimension Where  Source = 'Target' and PrimaryKey = '1' ) Target
+								on source.OrderNumber = target.Ordernumber
+					Where	Source.PrimaryKey = '1'
+						and source.Source = 'Source'
+					Order by Source.OrderNumber
+					FOR XML PATH (''))
+
+SET @PK_Join = Substring(@PK_Join,2,10000)
+
+
+
+--Select 0, 'Select ' + @sourceColumns   union
+--Select 1,  @hashSyntax	 				union
+--Select 1 , 'Into #temp1'    union
+--Select 2 , 'FROM ' + @SourceTable 'Source'
+
+
+
+
+Select 1  , 'Insert into ' + @TargetTable +'('													UNION
+Select 2  ,  @targetColumns + + ' , '+ @targetDefault +')'										UNION
+																					
+Select 3  , 'SELECT '																			UNION
+Select 4  , @sourceColumns + ' , '+ @sourceDefault 												UNION
+Select 5  , 'FROM ('																			UNION
+Select 6  , 'MERGE ' +@TargetTable + ' as ' + @T 												UNION
+																					
+Select 7  , 'USING ' + @SourceTable + ' as ' +@S 												UNION
+Select 8  , ' ON ('+ @PK_Join +' and ' + @t+'.idw_current = 1)'   								UNION
+Select 9  , '----Update existing records'														UNION
+Select 10 , 'WHEN MATCHED AND TARGET.row_hash_type2 <> SOURCE.[row_hash_type2]'					UNION
+Select 11 , 'THEN'																				UNION
+Select 12 , 'UPDATE'																			UNION
+Select 13 , 'SET '																				UNION
+Select  14 ,'    target.idw_current = 0                          ' 								UNION
+Select  15 ,'  , target.idw_version = Source.idw_version + 1	  '								UNION
+Select  16 ,'  , target.idw_version_end_date = Getdate()		  '								UNION
+Select  17 ,'  , target.idw_update_batchid = Source.idw_batchid  '										UNION
+																							
+Select 19 ,  '--------Insert new records'														UNION
+Select 20 ,  ' WHEN NOT MATCHED BY TARGET'														UNION
+Select 21 , ' THEN ' 																			UNION
+Select 22 , '  INSERT ('																		UNION
+Select 23 , @targetColumns + ',' +@targetDefault												UNION
+Select 24 , ')'																					UNION
+Select 25 , 'VALUES ('																			UNION
+Select 26 , @sourceColumns	+ ',' +@sourceDefault												UNION
+Select 27 , ')'																					UNION
+Select 28 , ' -------------------'																UNION
+Select 29 , ' WHEN NOT MATCHED BY SOURCE '														UNION
+SELECT 30 , 'THEN'																				UNION
+Select 32 ,  'UPDATE  SET TARGET.idw_isDelete = 1, '											UNION
+Select 33 ,  'TARGET.idw_Current = 0'															UNION
+Select 34,  '	                   -------------------------------         '					UNION
+Select 35,  '	                    OUTPUT $Action AS [action],source.*	   '					UNION
+Select 36,  '	            ) As i 										   '					UNION
+Select 37,  '	                    -------------------------------		   '					UNION
+Select 38,  '	WHERE                [Action] = ''UPDATE''				   '					UNION
+Select 39,  '	AND           ' +@pk_Target      + ' Is NOT NULL			   ' 
+
+
+											
+
+
